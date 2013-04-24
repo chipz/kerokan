@@ -1,5 +1,6 @@
 from scrapy.http import Request, FormRequest
 from scrapy.contrib.linkextractors.sgml import SgmlLinkExtractor
+#from scrapy.contrib.spiders import CrawlSpider, Rule
 from scrapy.spider import BaseSpider
 from scrapy.selector import HtmlXPathSelector
 from scrapy.shell import inspect_response
@@ -15,8 +16,8 @@ class MySpider(BaseSpider):
     def parse(self, response):
         return FormRequest.from_response(response,
                     formnumber=0,
-                    formdata={'login_email': 'your@email.com', 'login_password':
-                        'yourpassword'},
+                    formdata={'login_email': '', 'login_password':
+                        ''},
                     callback=self.check_login_response)
     
 
@@ -32,15 +33,15 @@ class MySpider(BaseSpider):
             scripts = hxs.select('/html/head/script')
 
             if hasattr(self, 'token'):
-                self.log("token exist : %s" % token)
+                self.log("token exist: %s" % token)
             else:
                 for script in scripts:
                     if "TOKEN" in script.extract():
                         self.root_ns = re.findall(r"root_ns: (\d+)", script.extract())[0] 
-                        self.token = re.findall(r"TOKEN: '(.+?)'", script.extract())[0].decode('string_escape')
+                        testtoken = re.findall(r"TOKEN:(| )('|\")(.+?)('|\")", script.extract())
+                        self.token = testtoken[0][2].decode('string_escape')
+                        break
 
-            print self.root_ns
-            print self.token
             self.log("root_ns: %s" % self.root_ns)
             self.log("token: %s" % self.token)
 
@@ -64,11 +65,13 @@ class MySpider(BaseSpider):
 
         dir_list = {}
 
+        #inspect_response(response)
+
         for item in dir_info['file_info']:
-            if(item[0] == True):
-                absolute_foldername = item[3]
+            if(item['is_dir'] == True):
+                absolute_foldername = item['fq_path']
                 local_foldername = re.findall(r".*\/(.*)", absolute_foldername)[0]
-                file_url = item[8]
+                file_url = item['fq_path']
                 dir_list[local_foldername] = file_url
 
                 yield FormRequest(url = 'https://www.dropbox.com/browse/'+absolute_foldername,
@@ -77,10 +80,10 @@ class MySpider(BaseSpider):
                             't': self.token,
                             'is_xhr' : 'true'},
                         callback=self.parse_page2)
-            elif(item[0] == False):
-                absolute_foldername = item[3]
+            elif(item['is_dir'] == False):
+                absolute_foldername = item['href']
                 local_foldername = re.findall(r".*\/(.*)", absolute_foldername)[0]
-                file_url = item[8]
+                file_url = item['href']
                 dir_list[local_foldername] = file_url
                 yield Request(file_url,
                         callback=self.save_pdf)
@@ -89,8 +92,8 @@ class MySpider(BaseSpider):
     def save_pdf(self, response):
         #path = self.get_path(response.url)
         filename = re.findall(r".*\/(.*)\?", response.url)[0]
-        self.log("downloading file: %s" % filename)
+        self.log("downloading filename: %s" % filename)
         with open(filename, "wb") as f:
             f.write(response.body)
-        self.log("done download")
+        self.log("done download: %s" % filename)
 
